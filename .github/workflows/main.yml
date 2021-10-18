@@ -1,19 +1,32 @@
-on: [push]
+on: [ push, workflow_dispatch ]
+
+env:
+  IMAGE_NAME: ${{ github.repository }}:${{ github.sha }}
 
 jobs:
-  hello_world_job:
+  build-and-scan:
+    name: Build and scan image
     runs-on: ubuntu-latest
-    name: A job to say hello
+
     steps:
-      # To use this repository's private action,
-      # you must check out the repository
-      - name: Checkout
+      - name: Check out the repository
         uses: actions/checkout@v2
-      - name: Hello world action step
-        uses: ./ # Uses an action in the root directory
-        id: hello
+
+      - name: Build the image
+        run: docker build -t $IMAGE_NAME .
+
+      - name: Prisma Cloud image scan
+        id: scan
+        uses: PaloAltoNetworks/prisma-cloud-scan@v1
         with:
-          who-to-greet: 'Mona the Octocat'
-      # Use the output from the `hello` step
-      - name: Get the output time
-        run: echo "The time was ${{ steps.hello.outputs.time }}"
+          pcc_console_url: ${{ secrets.PCC_CONSOLE_URL }}
+          pcc_user: ${{ secrets.PCC_USER }}
+          pcc_pass: ${{ secrets.PCC_PASS }}
+          image_name: ${{ env.IMAGE_NAME }}
+
+      # (Optional) for compatibility with GitHub's code scanning alerts
+      - name: Upload SARIF file
+        if: ${{ always() }} # necessary if using failure thresholds in the image scan
+        uses: github/codeql-action/upload-sarif@v1
+        with:
+          sarif_file: ${{ steps.scan.outputs.sarif_file }}
